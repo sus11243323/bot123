@@ -1,4 +1,22 @@
 require("dotenv").config();
+const http = require("http");
+
+const PORT = Number(process.env.PORT) || 3000;
+
+const healthServer = http.createServer((req, res) => {
+  if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("HVH Central bot is running.");
+    return;
+  }
+
+  res.writeHead(404);
+  res.end("Not found");
+});
+
+healthServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`🌐 Health server running on port ${PORT}`);
+});
 const {
   Client, GatewayIntentBits, Partials, PermissionsBitField, Events,
   REST, Routes, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder,
