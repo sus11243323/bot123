@@ -1,0 +1,690 @@
+{
+  "1555683746823282809": {
+    "adminPanel": {
+      "channelId": null,
+      "passwordHash": null
+    },
+    "antiNuke": {
+      "logChannelId": "1555713592400027730",
+      "enabled": true,
+      "snapshots": {
+        "1555684485348196376": {
+          "id": "1555684485348196376",
+          "name": "🏆・hvh-rankings",
+          "type": 0,
+          "parentId": "1555684480776409129",
+          "position": 11,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684483431276654": {
+          "id": "1555684483431276654",
+          "name": "🎮・cs2-hvh",
+          "type": 0,
+          "parentId": "1555684480776409129",
+          "position": 10,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684525064065085": {
+          "id": "1555684525064065085",
+          "name": "🔊・cheat-support",
+          "type": 2,
+          "parentId": "1555684508890562660",
+          "position": 5,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": 64000,
+          "userLimit": 0,
+          "permissionOverwrites": []
+        },
+        "1555684446902943754": {
+          "id": "1555684446902943754",
+          "name": "INFORMATION",
+          "type": 4,
+          "parentId": null,
+          "position": 0,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": [
+            {
+              "id": "1555683746823282809",
+              "allow": "1024",
+              "deny": "103079217152",
+              "type": 0
+            },
+            {
+              "id": "1555684435402166343",
+              "allow": "24128512",
+              "deny": "0",
+              "type": 0
+            },
+            {
+              "id": "1555684438027800637",
+              "allow": "24128512",
+              "deny": "0",
+              "type": 0
+            }
+          ]
+        },
+        "1555684451252707408": {
+          "id": "1555684451252707408",
+          "name": "📢・announcements",
+          "type": 0,
+          "parentId": "1555684446902943754",
+          "position": 1,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684527454818536": {
+          "id": "1555684527454818536",
+          "name": "SUPPORT",
+          "type": 4,
+          "parentId": null,
+          "position": 4,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555706477748944996": {
+          "id": "1555706477748944996",
+          "name": "Tickets",
+          "type": 4,
+          "parentId": null,
+          "position": 6,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555706479460360253": {
+          "id": "1555706479460360253",
+          "name": "📢・welcome",
+          "type": 0,
+          "parentId": null,
+          "position": 27,
+          "topic": "",
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684478452506637": {
+          "id": "1555684478452506637",
+          "name": "💬・levels",
+          "type": 0,
+          "parentId": "1555684460564058222",
+          "position": 9,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": [
+            {
+              "id": "1555683746823282809",
+              "allow": "1024",
+              "deny": "103079217152",
+              "type": 0
+            },
+            {
+              "id": "1555684435402166343",
+              "allow": "11264",
+              "deny": "0",
+              "type": 0
+            },
+            {
+              "id": "1555684438027800637",
+              "allow": "11264",
+              "deny": "0",
+              "type": 0
+            }
+          ]
+        },
+        "1555684547939536936": {
+          "id": "1555684547939536936",
+          "name": "⚙・・config",
+          "type": 0,
+          "parentId": "1555684540603703306",
+          "position": 26,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684513332469840": {
+          "id": "1555684513332469840",
+          "name": "💾・cheat-configs",
+          "type": 0,
+          "parentId": "1555684508890562660",
+          "position": 17,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684533708394569": {
+          "id": "1555684533708394569",
+          "name": "🎫・support",
+          "type": 0,
+          "parentId": "1555684527454818536",
+          "position": 21,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684462954553506": {
+          "id": "1555684462954553506",
+          "name": "💬・general",
+          "type": 0,
+          "parentId": "1555684460564058222",
+          "position": 5,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684496282747010": {
+          "id": "1555684496282747010",
+          "name": "🎮・other-games",
+          "type": 0,
+          "parentId": "1555684480776409129",
+          "position": 15,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684493472309322": {
+          "id": "1555684493472309322",
+          "name": "🎮・apex",
+          "type": 0,
+          "parentId": "1555684480776409129",
+          "position": 14,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684535792832582": {
+          "id": "1555684535792832582",
+          "name": "❓・faq",
+          "type": 0,
+          "parentId": "1555684527454818536",
+          "position": 22,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684511428255875": {
+          "id": "1555684511428255875",
+          "name": "🔓・cheats-discussion",
+          "type": 0,
+          "parentId": "1555684508890562660",
+          "position": 16,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": [
+            {
+              "id": "1555683746823282809",
+              "allow": "0",
+              "deny": "1024",
+              "type": 0
+            }
+          ]
+        },
+        "1555684549864988804": {
+          "id": "1555684549864988804",
+          "name": "🔊・staff-voice",
+          "type": 2,
+          "parentId": "1555684540603703306",
+          "position": 6,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": 64000,
+          "userLimit": 0,
+          "permissionOverwrites": []
+        },
+        "1555684545599246429": {
+          "id": "1555684545599246429",
+          "name": "📋・mod-log",
+          "type": 0,
+          "parentId": "1555684540603703306",
+          "position": 25,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684503157088256": {
+          "id": "1555684503157088256",
+          "name": "🎙・・streaming",
+          "type": 2,
+          "parentId": "1555684480776409129",
+          "position": 4,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": 64000,
+          "userLimit": 0,
+          "permissionOverwrites": []
+        },
+        "1555706483176374402": {
+          "id": "1555706483176374402",
+          "name": "mod-log",
+          "type": 0,
+          "parentId": null,
+          "position": 29,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684498249875571": {
+          "id": "1555684498249875571",
+          "name": "🔊・gaming-1",
+          "type": 2,
+          "parentId": "1555684480776409129",
+          "position": 2,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": 64000,
+          "userLimit": 0,
+          "permissionOverwrites": []
+        },
+        "1555684473084055676": {
+          "id": "1555684473084055676",
+          "name": "🔊・lobby",
+          "type": 2,
+          "parentId": "1555684460564058222",
+          "position": 0,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": 64000,
+          "userLimit": 0,
+          "permissionOverwrites": []
+        },
+        "1555684500615332031": {
+          "id": "1555684500615332031",
+          "name": "🔊・gaming-2",
+          "type": 2,
+          "parentId": "1555684480776409129",
+          "position": 3,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": 64000,
+          "userLimit": 0,
+          "permissionOverwrites": []
+        },
+        "1555684515085684767": {
+          "id": "1555684515085684767",
+          "name": "🛠・・setup-guide",
+          "type": 0,
+          "parentId": "1555684508890562660",
+          "position": 18,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684517765713981": {
+          "id": "1555684517765713981",
+          "name": "🚨・detection-alerts",
+          "type": 0,
+          "parentId": "1555684508890562660",
+          "position": 19,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555706481662496779": {
+          "id": "1555706481662496779",
+          "name": "📢・goodbye",
+          "type": 0,
+          "parentId": null,
+          "position": 28,
+          "topic": "",
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684460564058222": {
+          "id": "1555684460564058222",
+          "name": "COMMUNITY",
+          "type": 4,
+          "parentId": null,
+          "position": 1,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684467509694544": {
+          "id": "1555684467509694544",
+          "name": "😂・memes",
+          "type": 0,
+          "parentId": "1555684460564058222",
+          "position": 7,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684491320889484": {
+          "id": "1555684491320889484",
+          "name": "🎮・valorant",
+          "type": 0,
+          "parentId": "1555684480776409129",
+          "position": 13,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684480776409129": {
+          "id": "1555684480776409129",
+          "name": "GAMING",
+          "type": 4,
+          "parentId": null,
+          "position": 2,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684449377722539": {
+          "id": "1555684449377722539",
+          "name": "📜・rules",
+          "type": 0,
+          "parentId": "1555684446902943754",
+          "position": 0,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684540603703306": {
+          "id": "1555684540603703306",
+          "name": "STAFF",
+          "type": 4,
+          "parentId": null,
+          "position": 5,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": [
+            {
+              "id": "1555683746823282809",
+              "allow": "0",
+              "deny": "1024",
+              "type": 0
+            },
+            {
+              "id": "1555684435402166343",
+              "allow": "24128512",
+              "deny": "0",
+              "type": 0
+            },
+            {
+              "id": "1555684438027800637",
+              "allow": "24128512",
+              "deny": "0",
+              "type": 0
+            }
+          ]
+        },
+        "1555684543447695412": {
+          "id": "1555684543447695412",
+          "name": "🛡・・staff-chat",
+          "type": 0,
+          "parentId": "1555684540603703306",
+          "position": 24,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684538292637706": {
+          "id": "1555684538292637706",
+          "name": "🚫・ban-appeals",
+          "type": 0,
+          "parentId": "1555684527454818536",
+          "position": 23,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684476351156255": {
+          "id": "1555684476351156255",
+          "name": "🔊・afk",
+          "type": 2,
+          "parentId": "1555684460564058222",
+          "position": 1,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": 64000,
+          "userLimit": 0,
+          "permissionOverwrites": []
+        },
+        "1555706484237664399": {
+          "id": "1555706484237664399",
+          "name": "suggestions",
+          "type": 0,
+          "parentId": null,
+          "position": 30,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684469493469327": {
+          "id": "1555684469493469327",
+          "name": "💭・off-topic",
+          "type": 0,
+          "parentId": "1555684460564058222",
+          "position": 8,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684465311752214": {
+          "id": "1555684465311752214",
+          "name": "🖼・・media",
+          "type": 0,
+          "parentId": "1555684460564058222",
+          "position": 6,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684508890562660": {
+          "id": "1555684508890562660",
+          "name": "CHEATS & TOOLS",
+          "type": 4,
+          "parentId": null,
+          "position": 3,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": [
+            {
+              "id": "1555683746823282809",
+              "allow": "1024",
+              "deny": "103079217152",
+              "type": 0
+            },
+            {
+              "id": "1555684435402166343",
+              "allow": "24128512",
+              "deny": "0",
+              "type": 0
+            },
+            {
+              "id": "1555684438027800637",
+              "allow": "24128512",
+              "deny": "0",
+              "type": 0
+            }
+          ]
+        },
+        "1555684488359706715": {
+          "id": "1555684488359706715",
+          "name": "📊・hvh-clips",
+          "type": 0,
+          "parentId": "1555684480776409129",
+          "position": 12,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684522689826816": {
+          "id": "1555684522689826816",
+          "name": "📚・cheat-reviews",
+          "type": 0,
+          "parentId": "1555684508890562660",
+          "position": 20,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555684453580275863": {
+          "id": "1555684453580275863",
+          "name": "🗓・・events",
+          "type": 0,
+          "parentId": "1555684446902943754",
+          "position": 2,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": []
+        },
+        "1555713592400027730": {
+          "id": "1555713592400027730",
+          "name": "nuke-alert",
+          "type": 0,
+          "parentId": "1555684446902943754",
+          "position": 31,
+          "topic": null,
+          "nsfw": false,
+          "rateLimitPerUser": 0,
+          "bitrate": null,
+          "userLimit": null,
+          "permissionOverwrites": [
+            {
+              "id": "1555683746823282809",
+              "allow": "0",
+              "deny": "1024",
+              "type": 0
+            },
+            {
+              "id": "1555701087636295700",
+              "allow": "1024",
+              "deny": "0",
+              "type": 1
+            }
+          ]
+        }
+      }
+    },
+    "antiRaid": {
+      "enabled": false,
+      "threshold": 5,
+      "windowSeconds": 10,
+      "accountAgeHours": 24,
+      "banOnRaid": true,
+      "logChannelId": null
+    }
+  }
+}
