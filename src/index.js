@@ -42,6 +42,7 @@ const client = new Client({
 const joinWindows = new Map();
 const raidMembers = new Map();
 const restoreLocks = new Set();
+const restoredChannelCache = new Map();
 const autoSnapshotTimers = new Map();
 
 function isAdmin(member) { return member?.permissions?.has(PermissionsBitField.Flags.Administrator); }
@@ -158,8 +159,43 @@ async function findChannelDeleteExecutor(guild, channelId) {
   return entry?.executor || null;
 }
 async function restoreDeletedChannel(guild, snap) {
-  if (!snap || restoreLocks.has(`${guild.id}:${snap.id}`)) return null;
-  restoreLocks.add(`${guild.id}:${snap.id}`);
+  if (!snap) return null;
+
+  const key = `${guild.id}:${snap.id}`;
+  if (restoreLocks.has(key)) return null;
+
+  // Make restoration idempotent. Discord/audit-log events can arrive more than once;
+  // never create another copy of a channel/category we just restored.
+  const cachedId = restoredChannelCache.get(key);
+  if (cachedId) {
+    const cached = guild.channels.cache.get(cachedId);
+    if (cached) return cached;
+    restoredChannelCache.delete(key);
+  }
+
+  // For categories, also reuse an existing category with the protected name.
+  // This prevents duplicate categories when multiple audit events race each other.
+  if (snap.type === ChannelType.GuildCategory) {
+    const existing = guild.channels.cache.find(
+      c => c.type === ChannelType.GuildCategory && c.name === snap.name
+    );
+    if (existing) {
+      restoredChannelCache.set(key, existing.id);
+      await restoreChildrenToCategory(guild, snap.id, existing);
+      return existing;
+    }
+  }
+
+  // For normal channels, if a matching protected channel already exists, reuse it.
+  const existingChannel = guild.channels.cache.find(
+    c => c.type === snap.type && c.name === snap.name && c.parentId === (snap.parentId || null)
+  );
+  if (existingChannel) {
+    restoredChannelCache.set(key, existingChannel.id);
+    return existingChannel;
+  }
+
+  restoreLocks.add(key);
   try {
     let parent = snap.parentId ? guild.channels.cache.get(snap.parentId) : null;
     if (snap.parentId && !parent) {
@@ -185,17 +221,16 @@ async function restoreDeletedChannel(guild, snap) {
     };
 
     const recreated = await guild.channels.create(options);
+    restoredChannelCache.set(key, recreated.id);
     if (Number.isFinite(snap.position)) await recreated.setPosition(snap.position).catch(() => {});
 
-    // If a category was deleted, Discord moves its children out of it.
-    // Put every still-existing child back into its original category.
     if (snap.type === ChannelType.GuildCategory) {
       await restoreChildrenToCategory(guild, snap.id, recreated);
     }
 
     return recreated;
   } finally {
-    restoreLocks.delete(`${guild.id}:${snap.id}`);
+    restoreLocks.delete(key);
   }
 }
 
