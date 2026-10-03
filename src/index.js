@@ -912,9 +912,14 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     if (interaction.isModalSubmit() && interaction.customId.startsWith("panel_auth:")) {
       if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
-      const cfg = get(interaction.guildId).adminPanel;
+      const cfg = get(interaction.guildId).adminPanel || {};
       const password = interaction.fields.getTextInputValue("password");
-      if (!cfg.passwordHash || !verifyPassword(password, cfg.passwordHash)) return respond(interaction, { content: "❌ Incorrect panel password.", flags: MessageFlags.Ephemeral });
+      if (!cfg.passwordHash) {
+        return respond(interaction, { content: "❌ No admin-panel password is configured. Run /adminpanel to set one.", flags: MessageFlags.Ephemeral });
+      }
+      if (!verifyPassword(password, cfg.passwordHash)) {
+        return respond(interaction, { content: "❌ Incorrect panel password. Use the exact password that was set with /adminpanel.", flags: MessageFlags.Ephemeral });
+      }
       const action = interaction.customId.split(":")[1];
       if (action === "panel_antiraid") { const a = get(interaction.guildId).antiRaid; return respond(interaction, { content: `🛡️ Anti-raid: ${a.enabled ? "ON" : "OFF"} | threshold ${a.threshold}/${a.windowSeconds}s | ban ${a.banOnRaid ? "ON" : "OFF"}`, flags: MessageFlags.Ephemeral }); }
       if (action === "panel_nuke") { const n = get(interaction.guildId).antiNuke; return respond(interaction, { content: `💥 Anti-nuke: ${n.enabled ? "ON" : "OFF"} | snapshots: ${Object.keys(n.snapshots || {}).length} | log: ${n.logChannelId ? `<#${n.logChannelId}>` : "not set"}`, flags: MessageFlags.Ephemeral }); }
@@ -923,19 +928,122 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
-    const deferred = new Set(["setup", "config", "ticket", "suggest", "warn", "timeout", "kick", "ban", "unban", "purge", "adminpanel", "antinuke", "nuketest", "autosavesnapshot"]);
+    const deferred = new Set(["setup", "config", "ticket", "suggest", "warn", "timeout", "kick", "ban", "unban", "purge", "adminpanel", "antinuke", "nuketest", "autosavesnapshot", "softban", "slowmode", "poll", "announce", "ticketclose", "ticketrename", "lockdown", "security"]);
     if (deferred.has(name)) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (name === "help") return respond(interaction, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("HVH Central Commands").setDescription("Full server management, moderation, tickets, suggestions and security tools.").addFields(
       { name: "🛠️ Setup", value: "`/setup` • `/config` • `/ticket`", inline: false },
-      { name: "🛡️ Moderation", value: "`/warn` • `/timeout` • `/kick` • `/ban` • `/unban` • `/purge`", inline: false },
-      { name: "👋 Server", value: "`/serverinfo` • `/userinfo` • `/ping`", inline: false },
-      { name: "💡 Community", value: "`/suggest`", inline: false },
-      { name: "🚨 Security", value: "`/adminpanel` • `/antinuke` • `/antinukebuilder` • `/nuketest` • `/autosavesnapshot` • `/antiraid setup|status|test`", inline: false }
+      { name: "🛡️ Moderation", value: "`/warn` • `/timeout` • `/kick` • `/ban` • `/softban` • `/unban` • `/purge` • `/slowmode`", inline: false },
+      { name: "👋 Server", value: "`/serverinfo` • `/userinfo` • `/avatar` • `/roleinfo` • `/ping`", inline: false },
+      { name: "💡 Community", value: "`/suggest` • `/poll` • `/announce`", inline: false },
+      { name: "🎫 Tickets", value: "`/ticket` • `/ticketclose` • `/ticketrename`", inline: false },
+      { name: "🚨 Security", value: "`/adminpanel` • `/antinuke` • `/antinukebuilder` • `/nuketest` • `/autosavesnapshot` • `/antiraid setup|status|test` • `/lockdown` • `/security`", inline: false }
     )], flags: MessageFlags.Ephemeral });
     if (name === "ping") return respond(interaction, { content: `🏓 ${Math.round(client.ws.ping)}ms`, flags: MessageFlags.Ephemeral });
     if (name === "serverinfo") { const g = interaction.guild; return respond(interaction, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(g.name).setThumbnail(g.iconURL()).addFields({ name: "Owner", value: `<@${g.ownerId}>`, inline: true }, { name: "Members", value: `${g.memberCount}`, inline: true }, { name: "Channels", value: `${g.channels.cache.size}`, inline: true }, { name: "Roles", value: `${g.roles.cache.size}`, inline: true }, { name: "Created", value: `<t:${Math.floor(g.createdTimestamp / 1000)}:D>`, inline: true })] }); }
     if (name === "userinfo") { const u = interaction.options.getUser("user") || interaction.user; const m = await interaction.guild.members.fetch(u.id).catch(() => null); return respond(interaction, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(u.tag).setThumbnail(u.displayAvatarURL()).addFields({ name: "User ID", value: u.id, inline: true }, { name: "Joined", value: m ? `<t:${Math.floor(m.joinedTimestamp / 1000)}:R>` : "Not in server", inline: true }, { name: "Account", value: `<t:${Math.floor(u.createdTimestamp / 1000)}:R>`, inline: true })] }); }
+    if (name === "softban") {
+      const member = await interaction.guild.members.fetch(interaction.options.getUser("user").id).catch(() => null);
+      const reason = interaction.options.getString("reason") || "No reason provided";
+      if (!member) return respond(interaction, { content: "❌ Member not found.", flags: MessageFlags.Ephemeral });
+      if (!canManageTarget(interaction, member)) return respond(interaction, { content: "❌ You cannot moderate that member due to role hierarchy or ownership rules.", flags: MessageFlags.Ephemeral });
+      await member.ban({ reason, deleteMessageSeconds: 86400 });
+      await interaction.guild.members.unban(member.id, `Softban completed: ${reason}`).catch(() => {});
+      await sendLog(interaction.guild, logEmbed("Member softbanned", `**Member:** ${member.user.tag} (${member.id})\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}`, 0xfee75c));
+      return respond(interaction, { content: `🧹 Softbanned **${member.user.tag}** and removed the ban.` });
+    }
+    if (name === "slowmode") {
+      if (!interaction.channel?.isTextBased?.() || !interaction.channel.setRateLimitPerUser) return respond(interaction, { content: "❌ This command must be used in a text channel.", flags: MessageFlags.Ephemeral });
+      const seconds = interaction.options.getInteger("seconds");
+      await interaction.channel.setRateLimitPerUser(seconds, `Slowmode changed by ${interaction.user.tag}`);
+      return respond(interaction, `🐢 Slowmode set to **${seconds}s** in ${interaction.channel}.`);
+    }
+    if (name === "avatar") {
+      const user = interaction.options.getUser("user") || interaction.user;
+      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`${user.tag}'s Avatar`).setImage(user.displayAvatarURL({ size: 1024, extension: "png" }));
+      return respond(interaction, { embeds: [embed] });
+    }
+    if (name === "roleinfo") {
+      const role = interaction.options.getRole("role");
+      return respond(interaction, { embeds: [new EmbedBuilder().setColor(role.color || 0x5865f2).setTitle(`Role: ${role.name}`).addFields(
+        { name: "ID", value: role.id, inline: true },
+        { name: "Members", value: String(role.members.size), inline: true },
+        { name: "Position", value: String(role.position), inline: true },
+        { name: "Mentionable", value: String(role.mentionable), inline: true },
+        { name: "Hoisted", value: String(role.hoist), inline: true },
+        { name: "Managed", value: String(role.managed), inline: true }
+      )] });
+    }
+    if (name === "poll") {
+      const question = interaction.options.getString("question");
+      const msg = await interaction.channel.send({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("📊 Poll").setDescription(question).setFooter({ text: `Started by ${interaction.user.tag}` }).setTimestamp()] });
+      await msg.react("👍");
+      await msg.react("👎");
+      return respond(interaction, { content: `📊 Poll created: ${msg.url}` });
+    }
+    if (name === "announce") {
+      const channel = interaction.options.getChannel("channel");
+      const message = interaction.options.getString("message");
+      if (!channel?.isTextBased()) return respond(interaction, { content: "❌ Choose a text channel.", flags: MessageFlags.Ephemeral });
+      await channel.send({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("📢 Announcement").setDescription(message).setFooter({ text: `Posted by ${interaction.user.tag}` }).setTimestamp()] });
+      return respond(interaction, `📢 Announcement posted in ${channel}.`);
+    }
+    if (name === "ticketclose") {
+      if (!interaction.channel?.topic?.startsWith("ticket-owner:")) return respond(interaction, { content: "❌ This is not a ticket channel.", flags: MessageFlags.Ephemeral });
+      await respond(interaction, "🔒 Closing this ticket in 3 seconds...");
+      setTimeout(() => interaction.channel?.delete("Ticket closed by command").catch(() => {}), 3000);
+      return;
+    }
+    if (name === "ticketrename") {
+      if (!interaction.channel?.topic?.startsWith("ticket-owner:")) return respond(interaction, { content: "❌ This is not a ticket channel.", flags: MessageFlags.Ephemeral });
+      const raw = interaction.options.getString("name").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 90);
+      if (!raw) return respond(interaction, { content: "❌ Invalid channel name.", flags: MessageFlags.Ephemeral });
+      await interaction.channel.setName(raw, `Ticket renamed by ${interaction.user.tag}`);
+      return respond(interaction, `✏️ Ticket renamed to **#${raw}**.`);
+    }
+    if (name === "lockdown") {
+      if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
+      const enabled = interaction.options.getBoolean("enabled");
+      const everyoneId = interaction.guild.roles.everyone.id;
+      const previous = get(interaction.guildId).lockdownOverwrites || {};
+      if (enabled) {
+        const saved = {};
+        for (const ch of interaction.guild.channels.cache.values()) {
+          if (!ch.isTextBased?.() || !ch.permissionOverwrites) continue;
+          const ow = ch.permissionOverwrites.cache.get(everyoneId);
+          saved[ch.id] = ow ? { allow: ow.allow.bitfield.toString(), deny: ow.deny.bitfield.toString() } : null;
+          await ch.permissionOverwrites.edit(everyoneId, { SendMessages: false }, { reason: `Server lockdown by ${interaction.user.tag}` }).catch(() => {});
+        }
+        update(interaction.guildId, { lockdownOverwrites: saved });
+        await antiNukeLog(interaction.guild, `🔒 **Server lockdown enabled** by ${interaction.user}. @everyone cannot send messages in text channels.`);
+        return respond(interaction, "🔒 Server lockdown enabled.");
+      }
+      for (const ch of interaction.guild.channels.cache.values()) {
+        if (!ch.isTextBased?.() || !ch.permissionOverwrites) continue;
+        const old = previous[ch.id];
+        if (old) {
+          await ch.permissionOverwrites.edit(everyoneId, { allow: BigInt(old.allow), deny: BigInt(old.deny) }, { reason: `Server lockdown disabled by ${interaction.user.tag}` }).catch(() => {});
+        } else {
+          await ch.permissionOverwrites.delete(everyoneId, `Server lockdown disabled by ${interaction.user.tag}`).catch(() => {});
+        }
+      }
+      update(interaction.guildId, { lockdownOverwrites: {} });
+      await antiNukeLog(interaction.guild, `🔓 **Server lockdown disabled** by ${interaction.user}.`);
+      return respond(interaction, "🔓 Server lockdown disabled and saved channel overwrites restored.");
+    }
+    if (name === "security") {
+      if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
+      const cfg = get(interaction.guildId);
+      const n = cfg.antiNuke || {}; const r = cfg.antiRaid || {};
+      return respond(interaction, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("🛡️ Security Status").addFields(
+        { name: "Anti-nuke", value: n.enabled ? "🟢 Enabled" : "🔴 Disabled", inline: true },
+        { name: "Snapshots", value: String(Object.keys(n.snapshots || {}).length), inline: true },
+        { name: "Builder bots", value: String(Object.keys(n.builderBots || {}).length), inline: true },
+        { name: "Anti-raid", value: r.enabled ? "🟢 Enabled" : "🔴 Disabled", inline: true },
+        { name: "Raid threshold", value: `${r.threshold}/${r.windowSeconds}s`, inline: true },
+        { name: "Lockdown", value: Object.keys(cfg.lockdownOverwrites || {}).length ? "🔒 Active" : "🔓 Off", inline: true }
+      )], flags: MessageFlags.Ephemeral });
+    }
     if (name === "setup") return runSetup(interaction);
     if (name === "config") return handleConfig(interaction);
     if (name === "ticket") return postTicketPanel(interaction);
@@ -943,10 +1051,53 @@ client.on(Events.InteractionCreate, async interaction => {
     if (["warn", "timeout", "kick", "ban", "unban", "purge"].includes(name)) return moderation(interaction);
 
     if (name === "adminpanel") {
-      if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
-      const channel = interaction.options.getChannel("channel"); const password = interaction.options.getString("password");
-      update(interaction.guildId, { adminPanel: { channelId: channel.id, passwordHash: hashPassword(password) } });
-      await makePanel(channel); return respond(interaction, "✅ Admin panel created. The password is stored as a secure hash.");
+      if (!isAdmin(interaction.member)) {
+        return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
+      }
+
+      const channel = interaction.options.getChannel("channel");
+      const password = interaction.options.getString("password");
+
+      if (!channel?.isTextBased()) {
+        return respond(interaction, { content: "❌ Please choose a text channel.", flags: MessageFlags.Ephemeral });
+      }
+      if (typeof password !== "string" || password.length < 8 || password.length > 100) {
+        return respond(interaction, { content: "❌ The panel password must be 8-100 characters.", flags: MessageFlags.Ephemeral });
+      }
+
+      // Generate and immediately self-check the hash before saving it.
+      // The plaintext password is never persisted.
+      let passwordHash;
+      try {
+        passwordHash = hashPassword(password);
+        if (!verifyPassword(password, passwordHash)) {
+          return respond(interaction, { content: "❌ Password verification failed while creating the panel. Try again.", flags: MessageFlags.Ephemeral });
+        }
+      } catch (err) {
+        console.error("Admin panel password hashing failed:", err);
+        return respond(interaction, { content: "❌ Could not securely create the panel password.", flags: MessageFlags.Ephemeral });
+      }
+
+      const saved = update(interaction.guildId, {
+        adminPanel: { channelId: channel.id, passwordHash }
+      });
+
+      // Verify the exact value written to the persistent store.
+      if (!verifyPassword(password, saved.adminPanel?.passwordHash)) {
+        return respond(interaction, { content: "❌ The panel password could not be verified after saving. Please run /adminpanel again.", flags: MessageFlags.Ephemeral });
+      }
+
+      try {
+        await makePanel(channel);
+      } catch (err) {
+        console.error("Admin panel message creation failed:", err);
+        return respond(interaction, { content: "⚠️ The password was saved securely, but I could not post the panel message in that channel.", flags: MessageFlags.Ephemeral });
+      }
+
+      return respond(interaction, {
+        content: "✅ Admin panel created. The password was saved as a secure hash. Use that exact password in the panel.",
+        flags: MessageFlags.Ephemeral
+      });
     }
     if (name === "antinukebuilder") {
       if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
