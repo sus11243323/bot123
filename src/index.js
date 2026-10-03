@@ -45,6 +45,9 @@ const raidMembers = new Map();
 const restoreLocks = new Set();
 const restoredChannelCache = new Map();
 const autoSnapshotTimers = new Map();
+const antiNukeAuditLocks = new Set();
+const antiNukeIncidentState = new Map();
+const antiNukeSweepTimers = new Map();
 
 function isAdmin(member) { return member?.permissions?.has(PermissionsBitField.Flags.Administrator); }
 function okEmbed(title, description) { return new EmbedBuilder().setColor(0x57f287).setTitle(title).setDescription(description).setTimestamp(); }
@@ -271,12 +274,102 @@ async function restoreDeletedChannel(guild, snap) {
   }
 }
 
-async function antiNukeLog(guild, text) {
-  const cfg = get(guild.id).antiNuke;
-  if (!cfg?.enabled || !cfg.logChannelId) return;
-  const ch = guild.channels.cache.get(cfg.logChannelId);
-  if (ch?.isTextBased()) await ch.send({ embeds: [new EmbedBuilder().setTitle("🚨 Anti-Nuke").setDescription(text).setTimestamp()] }).catch(() => {});
+async function ensureAntiNukeLogsChannel(guild) {
+  const cfg = get(guild.id).antiNuke || {};
+
+  // Reuse the configured Logs channel if it still exists.
+  if (cfg.logsChannelId) {
+    const existing = guild.channels.cache.get(cfg.logsChannelId);
+    if (existing?.isTextBased()) return existing;
+  }
+
+  // Reuse a channel named exactly "Logs" before creating another one.
+  const existingByName = guild.channels.cache.find(
+    c => c.type === ChannelType.GuildText && c.name.toLowerCase() === "logs"
+  );
+  if (existingByName) {
+    update(guild.id, {
+      antiNuke: { ...cfg, logsChannelId: existingByName.id }
+    });
+    return existingByName;
+  }
+
+  try {
+    const channel = await guild.channels.create({
+      name: "Logs",
+      type: ChannelType.GuildText,
+      reason: "Anti-nuke incident log"
+    });
+
+    update(guild.id, {
+      antiNuke: { ...cfg, logsChannelId: channel.id }
+    });
+
+    return channel;
+  } catch (err) {
+    console.error("Anti-nuke could not create Logs channel:", err.message);
+    return null;
+  }
 }
+
+async function antiNukeLog(guild, text) {
+  const cfg = get(guild.id).antiNuke || {};
+  if (!cfg?.enabled) return;
+
+  const channels = [];
+  const logs = await ensureAntiNukeLogsChannel(guild);
+  if (logs?.isTextBased()) channels.push(logs);
+
+  if (cfg.logChannelId && cfg.logChannelId !== logs?.id) {
+    const configured = guild.channels.cache.get(cfg.logChannelId);
+    if (configured?.isTextBased()) channels.push(configured);
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("🚨 Anti-Nuke Logs")
+    .setDescription(text)
+    .setColor(0xed4245)
+    .setTimestamp();
+
+  for (const channel of channels) {
+    await channel.send({ embeds: [embed] }).catch(() => {});
+  }
+}
+
+async function antiNukeIncidentStarted(guild, executor) {
+  const key = `${guild.id}:${executor?.id || "unknown"}`;
+  if (!antiNukeIncidentState.has(key)) {
+    antiNukeIncidentState.set(key, {
+      startedAt: Date.now(),
+      created: 0,
+      deleted: 0,
+      restored: 0,
+      removed: 0
+    });
+    await antiNukeLog(
+      guild,
+      `🛡️ **Protection activated**\n**Executor:** ${executor?.tag || executor?.id || "Unknown"}\nUnauthorized destructive activity is being contained.`
+    );
+  }
+  return antiNukeIncidentState.get(key);
+}
+
+async function antiNukeIncidentSummary(guild, executor) {
+  const key = `${guild.id}:${executor?.id || "unknown"}`;
+  const state = antiNukeIncidentState.get(key);
+  if (!state) return;
+
+  await antiNukeLog(
+    guild,
+    `✅ **Recovery pass completed**\n**Executor:** ${executor?.tag || executor?.id || "Unknown"}\n` +
+    `**Unauthorized created:** ${state.created}\n` +
+    `**Unauthorized deleted:** ${state.deleted}\n` +
+    `**Channels removed:** ${state.removed}\n` +
+    `**Channels restored:** ${state.restored}\n` +
+    `**Logs:** <#${get(guild.id).antiNuke.logsChannelId}>`
+  );
+}
+
 function isAntiNukeExemptExecutor(guild, executor) {
   if (!executor) return false;
 
@@ -293,9 +386,33 @@ function isAntiNukeExemptExecutor(guild, executor) {
   return false;
 }
 
+function isBuilderBotTemporarilyTrusted(guild, executor) {
+  if (!guild || !executor?.bot) return false;
+
+  const builderBots = get(guild.id).antiNuke?.builderBots || {};
+  const expiresAt = Number(builderBots[executor.id] || 0);
+
+  if (!expiresAt) return false;
+
+  if (Date.now() >= expiresAt) {
+    const antiNuke = get(guild.id).antiNuke;
+    const next = { ...(antiNuke.builderBots || {}) };
+    delete next[executor.id];
+    update(guild.id, {
+      antiNuke: { ...antiNuke, builderBots: next }
+    });
+    return false;
+  }
+
+  return true;
+}
+
 async function isAntiNukeExemptMember(guild, executor) {
   if (!executor) return false;
   if (isAntiNukeExemptExecutor(guild, executor)) return true;
+
+  // Explicit temporary server-builder mode is the ONLY extra bot exemption.
+  if (isBuilderBotTemporarilyTrusted(guild, executor)) return true;
 
   // Other bots are always untrusted, even with Administrator or an Owner role.
   if (executor.bot) return false;
@@ -348,6 +465,47 @@ async function deleteUnauthorizedChannel(channel, executor) {
   }
 }
 
+async function processUnauthorizedChannelCreate(channel, executor) {
+  const guild = channel.guild;
+  if (!guild || !executor) return;
+
+  const cfg = get(guild.id).antiNuke;
+  if (!cfg?.enabled) return;
+
+  if (await isAntiNukeExemptMember(guild, executor)) return;
+
+  const key = `${guild.id}:${channel.id}`;
+  if (antiNukeAuditLocks.has(key)) return;
+  antiNukeAuditLocks.add(key);
+
+  try {
+    const state = await antiNukeIncidentStarted(guild, executor);
+    state.created += 1;
+
+    const deleted = await deleteUnauthorizedChannel(channel, executor);
+    if (deleted) state.removed += 1;
+
+    await antiNukeLog(
+      guild,
+      `🚨 **Unauthorized channel creation**\n` +
+      `**Channel:** #${channel.name}\n` +
+      `**Executor:** ${executor.tag || executor.id}\n` +
+      `**Type:** ${channel.type === ChannelType.GuildCategory ? "Category" : "Channel"}\n` +
+      `**Action:** ${deleted ? "Removed" : "FAILED to remove"}`
+    );
+
+    // Any other bot is hostile even when it has Administrator.
+    if (executor.bot) {
+      await punishUnauthorizedBot(guild, executor, "unauthorized channel/category creation");
+    }
+
+    // Give Discord a moment to finish the audit-log batch, then write a summary.
+    setTimeout(() => antiNukeIncidentSummary(guild, executor).catch(() => {}), 3000);
+  } finally {
+    antiNukeAuditLocks.delete(key);
+  }
+}
+
 async function handleAntiNukeChannelCreate(channel) {
   const guild = channel.guild;
   if (!guild) return;
@@ -355,38 +513,49 @@ async function handleAntiNukeChannelCreate(channel) {
   const cfg = get(guild.id).antiNuke;
   if (!cfg?.enabled) return;
 
-  // Our bot creates ticket channels and restoration channels. Never fight itself.
-  const executor = await findChannelCreateExecutor(guild, channel.id);
-  if (!executor) {
-    // Audit logs can be delayed. Do not delete an unknown creator blindly.
+  // Audit logs can lag behind ChannelCreate. Retry after the event instead of
+  // giving up permanently; this is what prevents mass-create nukes from
+  // getting partially through.
+  const delays = [250, 750, 1500, 3000, 5000];
+  for (const delay of delays) {
+    await new Promise(resolve => setTimeout(resolve, delay));
+    if (!guild.channels.cache.has(channel.id)) return;
+
+    const executor = await findChannelCreateExecutor(guild, channel.id);
+    if (!executor) continue;
+
+    await processUnauthorizedChannelCreate(channel, executor);
     return;
   }
-
-  if (await isAntiNukeExemptMember(guild, executor)) {
-    return;
-  }
-
-  const key = `${guild.id}:${executor.id}`;
-  const now = Date.now();
-  const previous = antiNukeStrikes.get(key) || [];
-  const strikes = previous.filter(t => now - t < 30000);
-  strikes.push(now);
-  antiNukeStrikes.set(key, strikes);
-
-  const deleted = await deleteUnauthorizedChannel(channel, executor);
 
   await antiNukeLog(
     guild,
-    `🚨 Unauthorized channel/category creation detected.\n` +
-    `**Channel:** #${channel.name}\n` +
-    `**Executor:** ${executor.tag || executor.id}\n` +
-    `**Type:** ${channel.type === ChannelType.GuildCategory ? "Category" : "Channel"}\n` +
-    `**Action:** ${deleted ? "Deleted" : "Delete failed"}`
+    `⚠️ **Audit-log lookup timed out** for newly created **#${channel.name}**. No automatic deletion was attempted because the executor could not be verified.`
   );
+}
 
-  // A bot with Administrator is still treated as hostile here.
-  if (executor.bot) {
-    await punishUnauthorizedBot(guild, executor, "unauthorized channel/category creation");
+async function sweepRecentUnauthorizedCreates(guild) {
+  const cfg = get(guild.id).antiNuke;
+  if (!cfg?.enabled) return;
+
+  const logs = await guild.fetchAuditLogs({
+    type: AuditLogEvent.ChannelCreate,
+    limit: 100
+  }).catch(() => null);
+
+  if (!logs) return;
+
+  for (const entry of logs.entries.values()) {
+    if (Date.now() - entry.createdTimestamp > 15000) continue;
+    const executor = entry.executor;
+    const targetId = entry.target?.id;
+    if (!executor || !targetId) continue;
+    if (await isAntiNukeExemptMember(guild, executor)) continue;
+
+    const channel = guild.channels.cache.get(targetId);
+    if (!channel) continue;
+
+    await processUnauthorizedChannelCreate(channel, executor);
   }
 }
 
@@ -762,7 +931,7 @@ client.on(Events.InteractionCreate, async interaction => {
       { name: "🛡️ Moderation", value: "`/warn` • `/timeout` • `/kick` • `/ban` • `/unban` • `/purge`", inline: false },
       { name: "👋 Server", value: "`/serverinfo` • `/userinfo` • `/ping`", inline: false },
       { name: "💡 Community", value: "`/suggest`", inline: false },
-      { name: "🚨 Security", value: "`/adminpanel` • `/antinuke` • `/nuketest` • `/autosavesnapshot` • `/antiraid setup|status|test`", inline: false }
+      { name: "🚨 Security", value: "`/adminpanel` • `/antinuke` • `/antinukebuilder` • `/nuketest` • `/autosavesnapshot` • `/antiraid setup|status|test`", inline: false }
     )], flags: MessageFlags.Ephemeral });
     if (name === "ping") return respond(interaction, { content: `🏓 ${Math.round(client.ws.ping)}ms`, flags: MessageFlags.Ephemeral });
     if (name === "serverinfo") { const g = interaction.guild; return respond(interaction, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(g.name).setThumbnail(g.iconURL()).addFields({ name: "Owner", value: `<@${g.ownerId}>`, inline: true }, { name: "Members", value: `${g.memberCount}`, inline: true }, { name: "Channels", value: `${g.channels.cache.size}`, inline: true }, { name: "Roles", value: `${g.roles.cache.size}`, inline: true }, { name: "Created", value: `<t:${Math.floor(g.createdTimestamp / 1000)}:D>`, inline: true })] }); }
@@ -779,6 +948,59 @@ client.on(Events.InteractionCreate, async interaction => {
       update(interaction.guildId, { adminPanel: { channelId: channel.id, passwordHash: hashPassword(password) } });
       await makePanel(channel); return respond(interaction, "✅ Admin panel created. The password is stored as a secure hash.");
     }
+    if (name === "antinukebuilder") {
+      if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
+
+      const bot = interaction.options.getUser("bot");
+      const enabled = interaction.options.getBoolean("enabled");
+      const rawDuration = interaction.options.getString("duration");
+
+      if (!bot?.bot) {
+        return respond(interaction, {
+          content: "❌ The selected user must be a bot.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      const antiNuke = get(interaction.guildId).antiNuke;
+      const builderBots = { ...(antiNuke.builderBots || {}) };
+
+      if (!enabled) {
+        delete builderBots[bot.id];
+        update(interaction.guildId, { antiNuke: { ...antiNuke, builderBots } });
+
+        await antiNukeLog(
+          interaction.guild,
+          `🔒 Builder mode disabled for <@${bot.id}>. Normal anti-nuke protection is active for this bot again.`
+        );
+
+        return respond(interaction, `🔒 Builder mode disabled for ${bot}.`);
+      }
+
+      const durationMs = parseSnapshotInterval(rawDuration);
+      if (!durationMs) {
+        return respond(interaction, {
+          content: "❌ Invalid duration. Use `10s`, `10m`, etc. Minimum 5 seconds.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      const expiresAt = Date.now() + durationMs;
+      builderBots[bot.id] = expiresAt;
+
+      update(interaction.guildId, { antiNuke: { ...antiNuke, builderBots } });
+
+      await antiNukeLog(
+        interaction.guild,
+        `🏗️ Builder mode enabled for ${bot} for **${formatSnapshotInterval(durationMs)}**. This bot may create/delete channels without being treated as a nuker.`
+      );
+
+      return respond(
+        interaction,
+        `🏗️ Builder mode enabled for ${bot} for **${formatSnapshotInterval(durationMs)}**.`
+      );
+    }
+
     if (name === "antinuke") {
       if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
       const channel = interaction.options.getChannel("channel"); const old = get(interaction.guildId).antiNuke;
@@ -787,6 +1009,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await antiNukeLog(interaction.guild, `✅ Anti-nuke enabled. **${count}** channels snapshotted for restoration.`);
       return respond(interaction, `🛡️ Anti-nuke enabled. Alerts: ${channel}. Existing channels were snapshotted.`);
     }
+
     if (name === "nuketest") {
       if (!isAdmin(interaction.member)) return respond(interaction, { content: "Administrator permission required.", flags: MessageFlags.Ephemeral });
       const cfg = get(interaction.guildId).antiNuke; const count = Object.keys(cfg.snapshots || {}).length;
@@ -828,6 +1051,35 @@ client.on(Events.InteractionCreate, async interaction => {
     if (err?.code === 10062 || err?.rawError?.code === 10062) return;
     console.error(err);
     await respond(interaction, { content: "Something went wrong.", flags: MessageFlags.Ephemeral });
+  }
+});
+
+client.once(Events.ClientReady, async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+
+  for (const guild of client.guilds.cache.values()) {
+    const cfg = get(guild.id).antiNuke;
+    if (cfg?.enabled && cfg.autoSnapshotIntervalMs) {
+      startAutoSnapshot(guild);
+    }
+
+    // Sweep shortly after startup so recent channel-create events that happened
+    // while the bot was reconnecting are not missed.
+    if (cfg?.enabled) {
+      await sweepRecentUnauthorizedCreates(guild).catch(() => {});
+    }
+  }
+
+  // Periodic audit-log sweep catches mass channel creation even when Discord
+  // delivers the ChannelCreate gateway events faster than the audit log.
+  for (const guild of client.guilds.cache.values()) {
+    if (antiNukeSweepTimers.has(guild.id)) continue;
+    const timer = setInterval(() => {
+      if (get(guild.id).antiNuke?.enabled) {
+        sweepRecentUnauthorizedCreates(guild).catch(() => {});
+      }
+    }, 3000);
+    antiNukeSweepTimers.set(guild.id, timer);
   }
 });
 
