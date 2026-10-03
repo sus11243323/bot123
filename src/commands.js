@@ -69,6 +69,11 @@ const commands = [
   new SlashCommandBuilder().setName("antinuke").setDescription("Configure anti-nuke protection.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption(o => o.setName("channel").setDescription("Channel for anti-nuke alerts").addChannelTypes(ChannelType.GuildText).setRequired(true)),
+  new SlashCommandBuilder().setName("antinukebuilder").setDescription("Temporarily trust a legitimate server-builder bot.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addUserOption(o => o.setName("bot").setDescription("The builder bot to trust").setRequired(true))
+    .addBooleanOption(o => o.setName("enabled").setDescription("Enable or disable builder mode").setRequired(true))
+    .addStringOption(o => o.setName("duration").setDescription("Duration, e.g. 10s or 10m; required when enabled").setRequired(false)),
   new SlashCommandBuilder().setName("nuketest").setDescription("Safe dry-run of the anti-nuke system; no channels are deleted.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName("autosavesnapshot").setDescription("Automatically save anti-nuke channel snapshots on a timer.")
