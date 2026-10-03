@@ -240,19 +240,53 @@ async function antiNukeLog(guild, text) {
   const ch = guild.channels.cache.get(cfg.logChannelId);
   if (ch?.isTextBased()) await ch.send({ embeds: [new EmbedBuilder().setTitle("🚨 Anti-Nuke").setDescription(text).setTimestamp()] }).catch(() => {});
 }
+function isAntiNukeExemptExecutor(guild, executor) {
+  if (!executor) return false;
+  // Server owner is always trusted.
+  if (executor.id === guild.ownerId) return true;
+  // This bot is trusted so ticket closing and other bot-managed channel deletes
+  // are not mistaken for a nuke.
+  if (client.user && executor.id === client.user.id) return true;
+  return false;
+}
+
+async function isAntiNukeExemptMember(guild, executor) {
+  if (!executor) return false;
+  if (isAntiNukeExemptExecutor(guild, executor)) return true;
+  const member = await guild.members.fetch(executor.id).catch(() => null);
+  if (!member) return false;
+  // Anyone with Administrator permission is allowed to delete channels freely.
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  // Also trust a role named "Owner" (case-insensitive).
+  if (member.roles.cache.some(role => role.name.trim().toLowerCase() === "owner")) return true;
+  return false;
+}
+
 async function handleAntiNukeChannelDelete(channel) {
   const cfg = get(channel.guild.id).antiNuke;
   if (!cfg?.enabled) return;
+
   const snap = cfg.snapshots?.[channel.id];
   const executor = await findChannelDeleteExecutor(channel.guild, channel.id);
-  if (executor && executor.id !== channel.guild.ownerId && executor.bot) {
-    const member = await channel.guild.members.fetch(executor.id).catch(() => null);
-    if (member?.kickable) await member.kick("Anti-nuke: bot deleted a protected channel").catch(() => {});
-    await antiNukeLog(channel.guild, `Blocked bot **${executor.tag}** after it deleted **#${channel.name}**.`);
+
+  // IMPORTANT: Only restore deletions made by an executor who is NOT trusted.
+  // This prevents normal ticket closing, admin cleanup, and Owner-role actions
+  // from causing anti-nuke to recreate channels.
+  const exempt = await isAntiNukeExemptMember(channel.guild, executor);
+  if (exempt) {
+    await antiNukeLog(channel.guild, `✅ Allowed **${executor?.tag || "trusted user"}** to delete **#${channel.name}**.`);
+    return;
   }
+
+  // If Discord has not supplied an audit-log executor yet, do not blindly
+  // recreate the channel. This avoids false positives during ticket deletion.
+  if (!executor) return;
+
   if (snap) {
     const recreated = await restoreDeletedChannel(channel.guild, snap).catch(() => null);
-    await antiNukeLog(channel.guild, recreated ? `♻️ Restored deleted channel **#${snap.name}**.` : `⚠️ Could not restore **#${snap.name}** automatically.`);
+    await antiNukeLog(channel.guild, recreated
+      ? `🚨 Restored deleted channel **#${snap.name}**. Executor: **${executor.tag}**.`
+      : `⚠️ Could not restore **#${snap.name}** automatically. Executor: **${executor.tag}**.`);
   }
 }
 
