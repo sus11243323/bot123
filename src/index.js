@@ -15,6 +15,7 @@ healthServer.listen(PORT, "0.0.0.0", () => console.log(`🌐 Health server runni
 const {
   Client, GatewayIntentBits, Partials, PermissionsBitField, PermissionFlagsBits, Events,
   REST, Routes, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder,
+  AuditLogEvent,
   ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType, MessageFlags
 } = require("discord.js");
 const { commands, makePanel } = require("./commands");
@@ -108,6 +109,12 @@ function snapshotGuildMeta(guild) {
 async function snapshotGuildChannels(guild) {
   const snapshots = {};
   for (const ch of guild.channels.cache.values()) {
+    // Ticket channels are temporary by design. Never put them into the
+    // protected snapshot, otherwise closing a ticket could resurrect it.
+    if (typeof ch.topic === "string" && ch.topic.startsWith("ticket-owner:")) {
+      continue;
+    }
+
     if (ch.isTextBased() || ch.isVoiceBased() || ch.type === ChannelType.GuildCategory) {
       snapshots[ch.id] = snapshotChannel(ch);
     }
@@ -153,19 +160,37 @@ async function restoreChildrenToCategory(guild, categoryId, recreatedCategory) {
   }
 }
 
-async function findChannelDeleteExecutor(guild, channelId) {
-  const logs = await guild.fetchAuditLogs({ type: 12, limit: 10 }).catch(() => null);
-  const entry = logs?.entries.find(e => e.target?.id === channelId && Date.now() - e.createdTimestamp < 15000);
-  return entry?.executor || null;
+async function findRecentAuditEntry(guild, type, targetId) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const logs = await guild.fetchAuditLogs({ type, limit: 15 }).catch(() => null);
+    const entry = logs?.entries.find(e => {
+      if (targetId && e.target?.id !== targetId) return false;
+      return Date.now() - e.createdTimestamp < 15000;
+    });
+    if (entry) return entry;
+    await new Promise(resolve => setTimeout(resolve, 400));
+  }
+  return null;
 }
+
+async function findChannelDeleteExecutor(guild, channelId) {
+  return (await findRecentAuditEntry(guild, AuditLogEvent.ChannelDelete, channelId))?.executor || null;
+}
+
+async function findChannelCreateExecutor(guild, channelId) {
+  return (await findRecentAuditEntry(guild, AuditLogEvent.ChannelCreate, channelId))?.executor || null;
+}
+
+async function findChannelUpdateExecutor(guild, channelId) {
+  return (await findRecentAuditEntry(guild, AuditLogEvent.ChannelUpdate, channelId))?.executor || null;
+}
+
 async function restoreDeletedChannel(guild, snap) {
   if (!snap) return null;
 
   const key = `${guild.id}:${snap.id}`;
   if (restoreLocks.has(key)) return null;
 
-  // Make restoration idempotent. Discord/audit-log events can arrive more than once;
-  // never create another copy of a channel/category we just restored.
   const cachedId = restoredChannelCache.get(key);
   if (cachedId) {
     const cached = guild.channels.cache.get(cachedId);
@@ -173,8 +198,12 @@ async function restoreDeletedChannel(guild, snap) {
     restoredChannelCache.delete(key);
   }
 
-  // For categories, also reuse an existing category with the protected name.
-  // This prevents duplicate categories when multiple audit events race each other.
+  // Never restore temporary ticket channels.
+  if (typeof snap.topic === "string" && snap.topic.startsWith("ticket-owner:")) {
+    return null;
+  }
+
+  // Reuse a matching category instead of creating duplicates.
   if (snap.type === ChannelType.GuildCategory) {
     const existing = guild.channels.cache.find(
       c => c.type === ChannelType.GuildCategory && c.name === snap.name
@@ -186,9 +215,11 @@ async function restoreDeletedChannel(guild, snap) {
     }
   }
 
-  // For normal channels, if a matching protected channel already exists, reuse it.
+  // Reuse a matching channel instead of creating duplicates.
   const existingChannel = guild.channels.cache.find(
-    c => c.type === snap.type && c.name === snap.name && c.parentId === (snap.parentId || null)
+    c => c.type === snap.type &&
+      c.name === snap.name &&
+      (c.parentId || null) === (snap.parentId || null)
   );
   if (existingChannel) {
     restoredChannelCache.set(key, existingChannel.id);
@@ -222,13 +253,19 @@ async function restoreDeletedChannel(guild, snap) {
 
     const recreated = await guild.channels.create(options);
     restoredChannelCache.set(key, recreated.id);
-    if (Number.isFinite(snap.position)) await recreated.setPosition(snap.position).catch(() => {});
+
+    if (Number.isFinite(snap.position)) {
+      await recreated.setPosition(snap.position).catch(() => {});
+    }
 
     if (snap.type === ChannelType.GuildCategory) {
       await restoreChildrenToCategory(guild, snap.id, recreated);
     }
 
     return recreated;
+  } catch (err) {
+    console.error(`Anti-nuke restore failed for ${snap.name}:`, err);
+    return null;
   } finally {
     restoreLocks.delete(key);
   }
@@ -242,51 +279,210 @@ async function antiNukeLog(guild, text) {
 }
 function isAntiNukeExemptExecutor(guild, executor) {
   if (!executor) return false;
-  // Server owner is always trusted.
+
+  // The server owner is trusted.
   if (executor.id === guild.ownerId) return true;
-  // This bot is trusted so ticket closing and other bot-managed channel deletes
-  // are not mistaken for a nuke.
+
+  // Only THIS bot is trusted. Other bots are never trusted merely because
+  // they have Administrator.
   if (client.user && executor.id === client.user.id) return true;
+
+  // A bot with Administrator is STILL untrusted.
+  if (executor.bot) return false;
+
   return false;
 }
 
 async function isAntiNukeExemptMember(guild, executor) {
   if (!executor) return false;
   if (isAntiNukeExemptExecutor(guild, executor)) return true;
+
+  // Other bots are always untrusted, even with Administrator or an Owner role.
+  if (executor.bot) return false;
+
   const member = await guild.members.fetch(executor.id).catch(() => null);
   if (!member) return false;
-  // Anyone with Administrator permission is allowed to delete channels freely.
+
+  // Human Administrator is trusted.
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-  // Also trust a role named "Owner" (case-insensitive).
+
+  // Human with a role named Owner is trusted.
   if (member.roles.cache.some(role => role.name.trim().toLowerCase() === "owner")) return true;
+
   return false;
 }
 
-async function handleAntiNukeChannelDelete(channel) {
-  const cfg = get(channel.guild.id).antiNuke;
-  if (!cfg?.enabled) return;
+const antiNukeStrikes = new Map();
 
-  const snap = cfg.snapshots?.[channel.id];
-  const executor = await findChannelDeleteExecutor(channel.guild, channel.id);
+async function punishUnauthorizedBot(guild, executor, reason) {
+  if (!executor?.bot) return;
+  if (!client.user || executor.id === client.user.id) return;
+  if (executor.id === guild.ownerId) return;
 
-  // IMPORTANT: Only restore deletions made by an executor who is NOT trusted.
-  // This prevents normal ticket closing, admin cleanup, and Owner-role actions
-  // from causing anti-nuke to recreate channels.
-  const exempt = await isAntiNukeExemptMember(channel.guild, executor);
-  if (exempt) {
-    await antiNukeLog(channel.guild, `✅ Allowed **${executor?.tag || "trusted user"}** to delete **#${channel.name}**.`);
+  const member = await guild.members.fetch(executor.id).catch(() => null);
+  if (!member) return;
+
+  // Try to remove a hostile bot after the first confirmed destructive action.
+  // Discord role hierarchy can still prevent the kick.
+  if (member.kickable) {
+    await member.kick(`Anti-nuke: unauthorized bot activity - ${reason}`).catch(err => {
+      console.error(`Anti-nuke could not kick ${executor.tag || executor.id}:`, err.message);
+    });
     return;
   }
 
-  // If Discord has not supplied an audit-log executor yet, do not blindly
-  // recreate the channel. This avoids false positives during ticket deletion.
+  await antiNukeLog(
+    guild,
+    `⚠️ Detected unauthorized bot **${executor.tag || executor.id}**, but I could not kick it because of role hierarchy.\n**Reason:** ${reason}`
+  );
+}
+
+async function deleteUnauthorizedChannel(channel, executor) {
+  if (!channel?.deletable) return false;
+  try {
+    await channel.delete("Anti-nuke: unauthorized channel creation by untrusted bot/member");
+    return true;
+  } catch (err) {
+    console.error(`Anti-nuke could not delete #${channel.name}:`, err.message);
+    return false;
+  }
+}
+
+async function handleAntiNukeChannelCreate(channel) {
+  const guild = channel.guild;
+  if (!guild) return;
+
+  const cfg = get(guild.id).antiNuke;
+  if (!cfg?.enabled) return;
+
+  // Our bot creates ticket channels and restoration channels. Never fight itself.
+  const executor = await findChannelCreateExecutor(guild, channel.id);
+  if (!executor) {
+    // Audit logs can be delayed. Do not delete an unknown creator blindly.
+    return;
+  }
+
+  if (await isAntiNukeExemptMember(guild, executor)) {
+    return;
+  }
+
+  const key = `${guild.id}:${executor.id}`;
+  const now = Date.now();
+  const previous = antiNukeStrikes.get(key) || [];
+  const strikes = previous.filter(t => now - t < 30000);
+  strikes.push(now);
+  antiNukeStrikes.set(key, strikes);
+
+  const deleted = await deleteUnauthorizedChannel(channel, executor);
+
+  await antiNukeLog(
+    guild,
+    `🚨 Unauthorized channel/category creation detected.\n` +
+    `**Channel:** #${channel.name}\n` +
+    `**Executor:** ${executor.tag || executor.id}\n` +
+    `**Type:** ${channel.type === ChannelType.GuildCategory ? "Category" : "Channel"}\n` +
+    `**Action:** ${deleted ? "Deleted" : "Delete failed"}`
+  );
+
+  // A bot with Administrator is still treated as hostile here.
+  if (executor.bot) {
+    await punishUnauthorizedBot(guild, executor, "unauthorized channel/category creation");
+  }
+}
+
+async function handleAntiNukeChannelDelete(channel) {
+  const guild = channel.guild;
+  if (!guild) return;
+
+  const cfg = get(guild.id).antiNuke;
+  if (!cfg?.enabled) return;
+
+  // Temporary ticket channels must never be resurrected.
+  if (typeof channel.topic === "string" && channel.topic.startsWith("ticket-owner:")) {
+    return;
+  }
+
+  const snap = cfg.snapshots?.[channel.id];
+  if (!snap) return;
+
+  const executor = await findChannelDeleteExecutor(guild, channel.id);
+
+  // Never blindly restore when Discord has not identified the executor.
   if (!executor) return;
 
-  if (snap) {
-    const recreated = await restoreDeletedChannel(channel.guild, snap).catch(() => null);
-    await antiNukeLog(channel.guild, recreated
-      ? `🚨 Restored deleted channel **#${snap.name}**. Executor: **${executor.tag}**.`
-      : `⚠️ Could not restore **#${snap.name}** automatically. Executor: **${executor.tag}**.`);
+  // Owner, human Administrator, human Owner-role and our bot are trusted.
+  // Another bot with Administrator is NOT trusted.
+  if (await isAntiNukeExemptMember(guild, executor)) {
+    return;
+  }
+
+  const recreated = await restoreDeletedChannel(guild, snap).catch(() => null);
+
+  await antiNukeLog(
+    guild,
+    recreated
+      ? `🚨 Unauthorized deletion detected. Restored **#${snap.name}**.\n**Executor:** ${executor.tag || executor.id}`
+      : `⚠️ Unauthorized deletion detected, but restoration of **#${snap.name}** failed.\n**Executor:** ${executor.tag || executor.id}`
+  );
+
+  if (executor.bot) {
+    await punishUnauthorizedBot(guild, executor, "unauthorized channel/category deletion");
+  }
+}
+
+async function handleAntiNukeChannelUpdate(oldChannel, newChannel) {
+  const guild = newChannel.guild;
+  if (!guild) return;
+
+  const cfg = get(guild.id).antiNuke;
+  if (!cfg?.enabled) return;
+
+  // Temporary tickets are intentionally allowed to change/delete normally.
+  if (typeof newChannel.topic === "string" && newChannel.topic.startsWith("ticket-owner:")) {
+    return;
+  }
+
+  const snap = cfg.snapshots?.[newChannel.id];
+  if (!snap) return;
+
+  const changed =
+    oldChannel.name !== newChannel.name ||
+    (oldChannel.parentId || null) !== (newChannel.parentId || null) ||
+    (oldChannel.rawPosition ?? 0) !== (newChannel.rawPosition ?? 0);
+
+  if (!changed) return;
+
+  const executor = await findChannelUpdateExecutor(guild, newChannel.id);
+  if (!executor) return;
+  if (await isAntiNukeExemptMember(guild, executor)) return;
+
+  const target = guild.channels.cache.get(newChannel.id);
+  if (!target) return;
+
+  // Restore the original category and name. Position restoration is best effort.
+  if (target.name !== snap.name) {
+    await target.setName(snap.name, "Anti-nuke: restore protected channel name").catch(() => {});
+  }
+
+  const parent = snap.parentId
+    ? guild.channels.cache.get(snap.parentId)
+    : null;
+
+  if ((target.parentId || null) !== (snap.parentId || null)) {
+    await target.setParent(parent?.id || null, { lockPermissions: false }).catch(() => {});
+  }
+
+  if (Number.isFinite(snap.position)) {
+    await target.setPosition(snap.position).catch(() => {});
+  }
+
+  await antiNukeLog(
+    guild,
+    `🚨 Unauthorized channel change reverted on **#${snap.name}**.\n**Executor:** ${executor.tag || executor.id}`
+  );
+
+  if (executor.bot) {
+    await punishUnauthorizedBot(guild, executor, "unauthorized channel modification");
   }
 }
 
@@ -322,6 +518,7 @@ function stopAutoSnapshot(guildId) {
 
 async function handleAntiNukeGuildUpdate(oldGuild, newGuild) {
   if (!oldGuild || !newGuild) return;
+
   const cfg = get(newGuild.id).antiNuke;
   if (!cfg?.enabled) return;
 
@@ -329,16 +526,22 @@ async function handleAntiNukeGuildUpdate(oldGuild, newGuild) {
   const iconChanged = oldGuild.icon !== newGuild.icon;
   if (!nameChanged && !iconChanged) return;
 
-  const logs = await newGuild.fetchAuditLogs({ type: 1, limit: 10 }).catch(() => null); // GuildUpdate
-  const entry = logs?.entries.find(e => Date.now() - e.createdTimestamp < 15000);
+  const entry = await findRecentAuditEntry(newGuild, AuditLogEvent.GuildUpdate, newGuild.id);
   const executor = entry?.executor || null;
-  if (!executor?.bot || executor.id === newGuild.ownerId) return;
+  if (!executor) return;
+
+  // Human owner/admin/Owner-role and our bot are allowed.
+  // Other bots are NOT allowed even if they have Administrator.
+  if (await isAntiNukeExemptMember(newGuild, executor)) return;
 
   const actions = [];
+
   if (nameChanged && cfg.serverName && cfg.serverName !== newGuild.name) {
-    const oldName = newGuild.name;
+    const currentName = newGuild.name;
     await newGuild.setName(cfg.serverName, "Anti-nuke: restore protected server name").catch(() => {});
-    actions.push(`server name restored from **${oldName}** to **${cfg.serverName}**`);
+    if (newGuild.name === cfg.serverName || currentName !== cfg.serverName) {
+      actions.push(`server name restored to **${cfg.serverName}**`);
+    }
   }
 
   if (iconChanged && cfg.iconURL) {
@@ -347,7 +550,14 @@ async function handleAntiNukeGuildUpdate(oldGuild, newGuild) {
   }
 
   if (actions.length) {
-    await antiNukeLog(newGuild, `♻️ Restored ${actions.join(" and ")} after bot **${executor.tag}** changed server settings.`);
+    await antiNukeLog(
+      newGuild,
+      `🚨 Unauthorized server-setting change by **${executor.tag || executor.id}**.\n♻️ ${actions.join(" and ")}.`
+    );
+  }
+
+  if (executor.bot) {
+    await punishUnauthorizedBot(newGuild, executor, "unauthorized server settings change");
   }
 }
 
@@ -504,8 +714,8 @@ client.on(Events.GuildMemberRemove, async member => {
 client.on(Events.GuildBanAdd, async ban => sendLog(ban.guild, logEmbed("Member banned", `**User:** ${ban.user.tag} (${ban.user.id})`, 0xed4245)));
 client.on(Events.GuildBanRemove, async ban => sendLog(ban.guild, logEmbed("Member unbanned", `**User:** ${ban.user.tag} (${ban.user.id})`, 0x57f287)));
 client.on(Events.ChannelDelete, handleAntiNukeChannelDelete);
-client.on(Events.ChannelCreate, async ch => { /* New channels are picked up by the next manual/automatic snapshot. */ });
-client.on(Events.ChannelUpdate, async ch => { /* Do not overwrite protected snapshots on live changes. */ });
+client.on(Events.ChannelCreate, handleAntiNukeChannelCreate);
+client.on(Events.ChannelUpdate, handleAntiNukeChannelUpdate);
 client.on(Events.GuildUpdate, handleAntiNukeGuildUpdate);
 
 client.on(Events.InteractionCreate, async interaction => {
