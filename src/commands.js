@@ -65,7 +65,7 @@ const commands = [
   new SlashCommandBuilder().setName("adminpanel").setDescription("Create the protected administration panel.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption(o => o.setName("channel").setDescription("Channel for the panel").addChannelTypes(ChannelType.GuildText).setRequired(true))
-    .addStringOption(o => o.setName("password").setDescription("Panel password").setMinLength(8).setRequired(true)),
+    .addStringOption(o => o.setName("password").setDescription("Panel password (8-100 characters)").setMinLength(8).setMaxLength(100).setRequired(true)),
   new SlashCommandBuilder().setName("antinuke").setDescription("Configure anti-nuke protection.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption(o => o.setName("channel").setDescription("Channel for anti-nuke alerts").addChannelTypes(ChannelType.GuildText).setRequired(true)),
@@ -91,7 +91,35 @@ const commands = [
       .addChannelOption(o => o.setName("log_channel").setDescription("Anti-raid log channel").addChannelTypes(ChannelType.GuildText).setRequired(false)))
     .addSubcommand(s => s.setName("status").setDescription("Show anti-raid settings."))
     .addSubcommand(s => s.setName("test").setDescription("Simulate an anti-raid trigger without banning anyone.")
-      .addIntegerOption(o => o.setName("joins").setDescription("Number of simulated joins").setMinValue(1).setMaxValue(100).setRequired(false)))
+      .addIntegerOption(o => o.setName("joins").setDescription("Number of simulated joins").setMinValue(1).setMaxValue(100).setRequired(false))),
+
+  new SlashCommandBuilder().setName("softban").setDescription("Ban and immediately unban a member to clear recent messages.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
+    .addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(false)),
+  new SlashCommandBuilder().setName("slowmode").setDescription("Set slowmode for the current channel.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addIntegerOption(o => o.setName("seconds").setDescription("0-21600 seconds").setMinValue(0).setMaxValue(21600).setRequired(true)),
+  new SlashCommandBuilder().setName("avatar").setDescription("Show a user's avatar.")
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(false)),
+  new SlashCommandBuilder().setName("roleinfo").setDescription("Show information about a role.")
+    .addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true)),
+  new SlashCommandBuilder().setName("poll").setDescription("Create a simple yes/no poll.")
+    .addStringOption(o => o.setName("question").setDescription("Poll question").setMinLength(3).setMaxLength(500).setRequired(true)),
+  new SlashCommandBuilder().setName("announce").setDescription("Post an announcement in a selected channel.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addChannelOption(o => o.setName("channel").setDescription("Announcement channel").addChannelTypes(ChannelType.GuildText).setRequired(true))
+    .addStringOption(o => o.setName("message").setDescription("Announcement text").setMinLength(1).setMaxLength(2000).setRequired(true)),
+  new SlashCommandBuilder().setName("ticketclose").setDescription("Close the current ticket channel.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+  new SlashCommandBuilder().setName("ticketrename").setDescription("Rename the current ticket channel.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption(o => o.setName("name").setDescription("New channel name").setMinLength(2).setMaxLength(90).setRequired(true)),
+  new SlashCommandBuilder().setName("lockdown").setDescription("Lock or unlock all text channels for @everyone.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addBooleanOption(o => o.setName("enabled").setDescription("Enable or disable lockdown").setRequired(true)),
+  new SlashCommandBuilder().setName("security").setDescription("Show the current security protection status.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(c => c.toJSON());
 
 async function makePanel(channel) {
